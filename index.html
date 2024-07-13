@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mapa evropských hlavních měst</title>
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.css" rel="stylesheet" />
+  <style>
+    body { margin:0; padding:0; }
+    #map { position:absolute; top:0; bottom:0; width:100%; }
+    .marker {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 2px solid white;
+      background-size: cover;
+      background-position: center;
+    }
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: #fff;
+      padding: 10px;
+      border: none;
+      z-index: 1;
+      display: flex;
+      gap: 10px;
+    }
+    #cityName {
+      padding: 5px;
+      font-size: 14px;
+    }
+    #magicButton, #findButton {
+      padding: 5px 10px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<div id="controls">
+  <input type="text" id="cityName" placeholder="Zadejte město">
+  <button id="findButton">Najít</button>
+  <button id="magicButton">Magic</button>
+</div>
+<script>
+  mapboxgl.accessToken = 'pk.eyJ1IjoiZGphbmRlcmEiLCJhIjoiY2ptZzJ4NXhqMnJ4ZjNrbnRiMm1haHhrcSJ9.8U9iRQu8sGnE7AQ1C7VI4Q'; // Nahraďte vaším Mapbox Access Tokenem
+
+  var map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/streets-v11',
+    center: [12.7376057, 42.8747214], // střed Trevi
+    zoom: 5
+  });
+
+  var markers = {};
+  var sheetData = [];
+  var clusteringEnabled = true;
+
+  async function fetchGoogleSheetsData() {
+    const apiKey = 'AIzaSyCpgbO0B6V0eEiVfyt6xewv0cHjyYsj1-o'; // Nahraďte vaším Google Sheets API klíčem
+    const spreadsheetId = '1YtHqKg22xPXglCKOYOzCYTK4Om1_WhjaogZTCHnfzf8'; // Nahraďte ID vaší tabulky Google Sheets
+    const range = 'mapa!A:E'; // Přizpůsobte název listu a rozsah podle potřeby
+
+    const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?key=${apiKey}`);
+    const data = await response.json();
+    return data.values;
+  }
+
+  function processSheetData(data) {
+    return data.slice(1).map(row => {
+      const [city, country, lat, lng, imageUrl] = row;
+      return {
+        city: city,
+        country: country,
+        coordinates: [parseFloat(lng), parseFloat(lat)],
+        imageUrl: imageUrl,
+        id: city
+      };
+    });
+  }
+
+  function createGeoJSON(data) {
+    return {
+      type: 'FeatureCollection',
+      features: data.map(item => ({
+        type: 'Feature',
+        properties: {
+          city: item.city,
+          country: item.country,
+          imageUrl: item.imageUrl,
+          id: item.id
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: item.coordinates
+        }
+      }))
+    };
+  }
+
+  function updateMarkers() {
+    var newMarkers = {};
+    var features = map.querySourceFeatures('capitals');
+
+    // Odstranění starých markerů
+    Object.keys(markers).forEach(function(id) {
+      if (!newMarkers[id]) {
+        markers[id].remove();
+        delete markers[id];
+      }
+    });
+
+    // Přidání nových markerů
+    features.forEach(function(feature) {
+      var coords = feature.geometry.coordinates;
+      var props = feature.properties;
+
+      if (!props.cluster) {
+        if (!markers[props.id]) {
+          var el = document.createElement('div');
+          el.className = 'marker';
+          el.style.backgroundImage = `url(${props.imageUrl})`;
+
+          var marker = new mapboxgl.Marker(el)
+            .setLngLat(coords)
+            .addTo(map);
+
+          el.addEventListener('click', function() {
+            new mapboxgl.Popup()
+              .setLngLat(coords)
+              .setHTML(`<strong>${props.city}, ${props.country}</strong><br><img src="${props.imageUrl}" style="width:100px;height:auto;">`)
+              .addTo(map);
+          });
+
+          markers[props.id] = marker;
+        }
+        newMarkers[props.id] = markers[props.id];
+      }
+    });
+  }
+
+  function toggleClustering() {
+    clusteringEnabled = !clusteringEnabled;
+    map.removeLayer('clusters');
+    map.removeLayer('cluster-count');
+    map.removeLayer('unclustered-point');
+    map.removeSource('capitals');
+
+    const geojsonData = createGeoJSON(sheetData);
+
+    map.addSource('capitals', {
+      type: 'geojson',
+      data: geojsonData,
+      cluster: clusteringEnabled,
+      clusterMaxZoom: 14,
+      clusterRadius: 50
+    });
+
+    if (clusteringEnabled) {
+      map.addLayer({
+        id: 'clusters',
+        type: 'circle',
+        source: 'capitals',
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': [
+            'step',
+            ['get', 'point_count'],
+            '#51bbd6',
+            100,
+            '#f1f075',
+            750,
+            '#f28cb1'
+          ],
+          'circle-radius': [
+            'step',
+            ['get', 'point_count'],
+            20,
+            100,
+            30,
+            750,
+            40
+          ]
+        }
+      });
+
+      map.addLayer({
+        id: 'cluster-count',
+        type: 'symbol',
+        source: 'capitals',
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': '{point_count_abbreviated}',
+          'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+          'text-size': 12
+        }
+      });
+    } else {
+      map.addLayer({
+        id: 'unclustered-point',
+        type: 'symbol',
+        source: 'capitals',
+        filter: ['!', ['has', 'point_count']],
+        layout: {
+          'icon-image': ['get', 'icon'],
+          'icon-size': 0.5,
+          'icon-allow-overlap': true
+        }
+      });
+    }
+
+    setTimeout(updateMarkers, 100); // Okamžitá aktualizace markerů po přepnutí clusterování s malým zpožděním
+  }
+
+  function findCity() {
+    const cityName = document.getElementById('cityName').value.toLowerCase();
+    const feature = sheetData.find(item => item.city.toLowerCase() === cityName);
+    if (feature) {
+      map.easeTo({
+        center: feature.coordinates,
+        zoom: 12
+      });
+    } else {
+      alert('Město nenalezeno!');
+    }
+  }
+
+  document.getElementById('magicButton').addEventListener('click', function() {
+    toggleClustering();
+  });
+
+  document.getElementById('findButton').addEventListener('click', findCity);
+
+  map.on('load', async function () {
+    const rows = await fetchGoogleSheetsData();
+    sheetData = processSheetData(rows);
+
+    const geojsonData = createGeoJSON(sheetData);
+
+    map.addSource('capitals', {
+      type: 'geojson',
+      data: geojsonData,
+      cluster: clusteringEnabled,
+      clusterMaxZoom: 14,
+      clusterRadius: 25
+    });
+
+    map.addLayer({
+      id: 'clusters',
+      type: 'circle',
+      source: 'capitals',
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': [
+          'step',
+          ['get', 'point_count'],
+          '#51bbd6',
+          100,
+          '#f1f075',
+          750,
+          '#f28cb1'
+        ],
+        'circle-radius': [
+          'step',
+          ['get', 'point_count'],
+          20,
+          100,
+          30,
+          750,
+          40
+        ]
+      }
+    });
+
+    map.addLayer({
+      id: 'cluster-count',
+      type: 'symbol',
+      source: 'capitals',
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+        'text-size': 12
+      }
+    });
+
+    updateMarkers();
+
+    map.on('moveend', updateMarkers);
+    map.on('zoomend', updateMarkers);
+
+    map.on('click', 'clusters', function (e) {
+      var features = map.queryRenderedFeatures(e.point, {
+        layers: ['clusters']
+      });
+      var clusterId = features[0].properties.cluster_id;
+      map.getSource('capitals').getClusterExpansionZoom(
+        clusterId,
+        function (err, zoom) {
+          if (err) return;
+
+          map.easeTo({
+            center: features[0].geometry.coordinates,
+            zoom: zoom
+          });
+
+          setTimeout(updateMarkers, 1000); // Zpoždění pro zajištění, že se piny aktualizují po přiblížení
+        }
+      );
+    });
+
+    map.on('mouseenter', 'clusters', function () {
+      map.getCanvas().style.cursor = 'pointer';
+    });
+    map.on('mouseleave', 'clusters', function () {
+      map.getCanvas().style.cursor = '';
+    });
+  });
+</script>
+</body>
+</html>
