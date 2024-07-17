@@ -34,27 +34,27 @@
     }
     #filters {
       position: absolute;
-      top: 10px;
+      bottom: 50px; /* Adjusted position */
       left: 50%;
       transform: translateX(-50%);
       padding: 10px;
       z-index: 1;
       display: flex;
       gap: 10px;
-      flex-wrap: wrap;
       justify-content: center;
+      white-space: nowrap; /* Prevent text wrapping */
     }
     #typeFilters {
       position: absolute;
-      bottom: 10px;
+      bottom: 10px; /* Adjusted position */
       left: 50%;
       transform: translateX(-50%);
       padding: 10px;
       z-index: 1;
       display: flex;
       gap: 10px;
-      flex-wrap: wrap;
       justify-content: center;
+      white-space: nowrap; /* Prevent text wrapping */
     }
     #zoomControls {
       position: absolute;
@@ -68,17 +68,13 @@
     }
     #magicButton {
       position: absolute;
-      bottom: 40px;
+      bottom: 80px;
       left: 10px;
       padding: 10px;
       z-index: 1;
     }
     #zoomLevel {
-      position: absolute;
-      bottom: 30px;
-      right: 10px;
-      padding: 5px;
-      z-index: 1;
+      display: none;
     }
     #filterTable {
       display: none;
