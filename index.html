@@ -17,10 +17,11 @@
       background-size: cover;
       background-position: center;
     }
-    #controls, #filters, #typeFilters, #zoomControls, #magicButton, #zoomLevel {
+    #controls, #filters, #typeFilters, #zoomControls, #magicButton, #zoomLevel, #cityName {
       background: rgba(51, 51, 51, 0.2);
       color: #E0E0E0;
       border: none;
+      font-size: 14px; /* Adjust font size */
     }
     #controls {
       position: absolute;
@@ -62,9 +63,8 @@
       padding: 10px;
       z-index: 1;
       display: flex;
+      flex-direction: column; /* Stack controls vertically */
       gap: 10px;
-      flex-wrap: wrap;
-      justify-content: center;
     }
     #magicButton {
       position: absolute;
@@ -85,17 +85,21 @@
     }
     #cityName {
       padding: 5px;
-      font-size: 14px;
+      font-size: 14px; /* Adjust font size */
       background: rgba(51, 51, 51, 0.8);
       color: #E0E0E0;
       border: 1px solid #444444;
+      caret-color: white; /* Set cursor color to white */
+    }
+    #cityName::placeholder {
+      color: #E0E0E0; /* Set placeholder text color to white */
     }
     #findButton {
       display: none;
     }
     .filter-button, .zoom-button {
       padding: 5px 10px;
-      font-size: 14px;
+      font-size: 8px; /* Adjust font size */
       cursor: pointer;
       border: none;
       background: rgba(68, 68, 68, 0.8);
@@ -108,12 +112,15 @@
     .zoom-button {
       font-weight: bold;
     }
+    .mapboxgl-popup-content {
+      color: black; /* Set popup text color to black */
+    }
   </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="controls">
-  <input type="text" id="cityName" placeholder="Zadejte město">
+  <input type="text" id="cityName" placeholder="najít">
   <button id="findButton">Najít</button>
 </div>
 <div id="filters"></div>
@@ -121,7 +128,7 @@
 <div id="zoomControls">
   <button id="zoomInButton" class="zoom-button">+</button>
   <button id="zoomOutButton" class="zoom-button">-</button>
-  <button id="zoomFitButton" class="zoom-button">FIT</button>
+  <button id="zoomFitButton" class="zoom-button">↔</button>
 </div>
 <button id="magicButton">🧙🏼</button>
 <div id="zoomLevel"></div>
@@ -203,7 +210,7 @@
   }
 
   async function translateText(text, targetLang) {
-    const apiKey = 'YOUR_GOOGLE_TRANSLATE_API_KEY';
+    const apiKey = 'AIzaSyCpgbO0B6V0eEiVfyt6xewv0cHjyYsj1-o';
     const url = `https://translation.googleapis.com/language/translate/v2?key=${apiKey}`;
     const response = await fetch(url, {
       method: 'POST',
@@ -252,7 +259,7 @@
               .setHTML(`
                 <strong>${wikiInfo.title}</strong><br>
                 <img src="${wikiInfo.thumbnail}" style="width:100px;height:auto;"><br>
-                ${translatedExtract}<br>
+                <span style="color:black">${translatedExtract}</span><br> <!-- Set text color to black -->
                 <a href="${wikiInfo.url}" target="_blank">Přečtěte si více na Wikipedii</a>
               `)
               .addTo(map);
