@@ -28,6 +28,56 @@
       display: flex;
       gap: 10px;
     }
+    #filters {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #fff;
+      padding: 10px;
+      border: none;
+      z-index: 1;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    #typeFilters {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #fff;
+      padding: 10px;
+      border: none;
+      z-index: 1;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    #zoomControls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #fff;
+      padding: 10px;
+      border: none;
+      z-index: 1;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    #filterTable {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: #fff;
+      padding: 10px;
+      border: 1px solid #ccc;
+      z-index: 1;
+    }
     #cityName {
       padding: 5px;
       font-size: 14px;
@@ -36,6 +86,20 @@
       padding: 5px 10px;
       font-size: 14px;
       cursor: pointer;
+    }
+    .filter-button, .zoom-button {
+      padding: 5px 10px;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-weight: normal;
+    }
+    .filter-button.active, .zoom-button.active {
+      font-weight: bold;
+    }
+    .zoom-button {
+      font-weight: bold;
     }
   </style>
 </head>
@@ -46,6 +110,14 @@
   <button id="findButton">Najít</button>
   <button id="magicButton">Magic</button>
 </div>
+<div id="filters"></div>
+<div id="typeFilters"></div>
+<div id="zoomControls">
+  <button id="zoomInButton" class="zoom-button">+</button>
+  <button id="zoomOutButton" class="zoom-button">-</button>
+  <button id="zoomFitButton" class="zoom-button">FIT</button>
+</div>
+<div id="filterTable"></div>
 <script>
   mapboxgl.accessToken = 'pk.eyJ1IjoiZGphbmRlcmEiLCJhIjoiY2ptZzJ4NXhqMnJ4ZjNrbnRiMm1haHhrcSJ9.8U9iRQu8sGnE7AQ1C7VI4Q'; // Nahraďte vaším Mapbox Access Tokenem
 
@@ -58,12 +130,14 @@
 
   var markers = {};
   var sheetData = [];
+  var filterStates = {}; // Pomocná tabulka pro stavy filtrů
+  var typeFilterStates = {}; // Pomocná tabulka pro stavy filtrů typu
   var clusteringEnabled = true;
 
   async function fetchGoogleSheetsData() {
     const apiKey = 'AIzaSyCpgbO0B6V0eEiVfyt6xewv0cHjyYsj1-o'; // Nahraďte vaším Google Sheets API klíčem
     const spreadsheetId = '1YtHqKg22xPXglCKOYOzCYTK4Om1_WhjaogZTCHnfzf8'; // Nahraďte ID vaší tabulky Google Sheets
-    const range = 'mapa!A:E'; // Přizpůsobte název listu a rozsah podle potřeby
+    const range = 'mapa!A:G'; // Přizpůsobte název listu a rozsah podle potřeby
 
     const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?key=${apiKey}`);
     const data = await response.json();
@@ -72,21 +146,27 @@
 
   function processSheetData(data) {
     return data.slice(1).map(row => {
-      const [city, country, lat, lng, imageUrl] = row;
+      const [city, country, lat, lng, imageUrl, tags, type] = row;
       return {
         city: city,
         country: country,
         coordinates: [parseFloat(lng), parseFloat(lat)],
         imageUrl: imageUrl,
+        tags: tags ? tags.split(',') : [],
+        type: type,
         id: city
       };
     });
   }
 
   function createGeoJSON(data) {
+    const activeTags = Object.keys(filterStates).filter(tag => filterStates[tag]);
+    const activeTypes = Object.keys(typeFilterStates).filter(type => typeFilterStates[type]);
     return {
       type: 'FeatureCollection',
-      features: data.map(item => ({
+      features: data.filter(item => 
+        item.tags.some(tag => activeTags.includes(tag)) && activeTypes.includes(item.type)
+      ).map(item => ({
         type: 'Feature',
         properties: {
           city: item.city,
@@ -102,7 +182,35 @@
     };
   }
 
-  function updateMarkers() {
+  async function fetchWikipediaInfo(city) {
+    const response = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(city)}`);
+    const data = await response.json();
+    return {
+      title: data.title,
+      extract: data.extract,
+      url: data.content_urls.desktop.page,
+      thumbnail: data.thumbnail ? data.thumbnail.source : ''
+    };
+  }
+
+  async function translateText(text, targetLang) {
+    const apiKey = 'AIzaSyCpgbO0B6V0eEiVfyt6xewv0cHjyYsj1-o'; // Nahraďte vaším Google Translate API klíčem
+    const url = `https://translation.googleapis.com/language/translate/v2?key=${apiKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({
+        q: text,
+        target: targetLang
+      }),
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    const data = await response.json();
+    return data.data.translations[0].translatedText;
+  }
+
+  async function updateMarkers() {
     var newMarkers = {};
     var features = map.querySourceFeatures('capitals');
 
@@ -129,10 +237,17 @@
             .setLngLat(coords)
             .addTo(map);
 
-          el.addEventListener('click', function() {
+          el.addEventListener('click', async function() {
+            const wikiInfo = await fetchWikipediaInfo(props.city);
+            const translatedExtract = await translateText(wikiInfo.extract, 'cs');
             new mapboxgl.Popup()
               .setLngLat(coords)
-              .setHTML(`<strong>${props.city}, ${props.country}</strong><br><img src="${props.imageUrl}" style="width:100px;height:auto;">`)
+              .setHTML(`
+                <strong>${wikiInfo.title}</strong><br>
+                <img src="${wikiInfo.thumbnail}" style="width:100px;height:auto;"><br>
+                ${translatedExtract}<br>
+                <a href="${wikiInfo.url}" target="_blank">Přečtěte si více na Wikipedii</a>
+              `)
               .addTo(map);
           });
 
@@ -216,17 +331,146 @@
     setTimeout(updateMarkers, 100); // Okamžitá aktualizace markerů po přepnutí clusterování s malým zpožděním
   }
 
+  function flyToLocation(coords, zoomLevel) {
+    map.flyTo({
+      center: coords,
+      zoom: zoomLevel,
+      speed: 2.0,
+      curve: 1.2,
+      easing: function(t) {
+        return t;
+      }
+    });
+  }
+
   function findCity() {
     const cityName = document.getElementById('cityName').value.toLowerCase();
-    const feature = sheetData.find(item => item.city.toLowerCase() === cityName);
+    const feature = sheetData.find(item => item.city.toLowerCase().includes(cityName));
     if (feature) {
-      map.easeTo({
-        center: feature.coordinates,
-        zoom: 12
+      // Nastav stav všech filtrů na ON
+      Object.keys(filterStates).forEach(tag => filterStates[tag] = true);
+      Object.keys(typeFilterStates).forEach(type => typeFilterStates[type] = true);
+      updateFilterButtons();
+      updateTypeFilterButtons();
+
+      // Plynule odzoomovat, přemístit a zazoomovat na nové místo
+      flyToLocation([12.7376057, 42.8747214], 5);
+      map.once('moveend', () => {
+        flyToLocation(feature.coordinates, 12);
+      });
+
+      // Aktualizuj mapu po přiblížení a vymaž vyhledávací pole
+      map.once('moveend', () => {
+        handleFilterChange();
+        document.getElementById('cityName').value = '';
       });
     } else {
       alert('Město nenalezeno!');
     }
+  }
+
+  function zoomIn() {
+    var currentZoom = map.getZoom();
+    flyToLocation(map.getCenter(), currentZoom + 1);
+  }
+
+  function zoomOut() {
+    var currentZoom = map.getZoom();
+    flyToLocation(map.getCenter(), currentZoom - 1);
+  }
+
+  function zoomFit() {
+    const bounds = new mapboxgl.LngLatBounds();
+    sheetData.forEach(item => {
+      if (filterStates[item.tags] && typeFilterStates[item.type]) {
+        bounds.extend(item.coordinates);
+      }
+    });
+    map.fitBounds(bounds, { padding: 20 });
+  }
+
+  function updateFilterButtons() {
+    const tags = new Set(sheetData.flatMap(item => item.tags));
+    const filtersDiv = document.getElementById('filters');
+    filtersDiv.innerHTML = '';
+
+    tags.forEach(tag => {
+      const button = document.createElement('button');
+      button.innerText = tag;
+      button.className = 'filter-button';
+      button.classList.toggle('active', filterStates[tag]);
+      button.addEventListener('click', () => {
+        filterStates[tag] = !filterStates[tag];
+        button.classList.toggle('active');
+        handleFilterChange(); // Aktualizace mapy ihned po změně filtru
+      });
+      filtersDiv.appendChild(button);
+    });
+    updateFilterTable();
+  }
+
+  function updateTypeFilterButtons() {
+    const types = new Set(sheetData.map(item => item.type));
+    const typeFiltersDiv = document.getElementById('typeFilters');
+    typeFiltersDiv.innerHTML = '';
+
+    types.forEach(type => {
+      const button = document.createElement('button');
+      button.innerText = type;
+      button.className = 'filter-button';
+      button.classList.toggle('active', typeFilterStates[type]);
+      button.addEventListener('click', () => {
+        typeFilterStates[type] = !typeFilterStates[type];
+        button.classList.toggle('active');
+        handleFilterChange(); // Aktualizace mapy ihned po změně filtru
+      });
+      typeFiltersDiv.appendChild(button);
+    });
+    updateFilterTable();
+  }
+
+  function updateFilterTable() {
+    const filterTableDiv = document.getElementById('filterTable');
+    filterTableDiv.innerHTML = '<h3>Filter States</h3>';
+    const table = document.createElement('table');
+    Object.keys(filterStates).forEach(tag => {
+      const row = document.createElement('tr');
+      const cellTag = document.createElement('td');
+      const cellState = document.createElement('td');
+      cellTag.innerText = tag;
+      cellState.innerText = filterStates[tag] ? 'ON' : 'OFF';
+      row.appendChild(cellTag);
+      row.appendChild(cellState);
+      table.appendChild(row);
+    });
+    Object.keys(typeFilterStates).forEach(type => {
+      const row = document.createElement('tr');
+      const cellType = document.createElement('td');
+      const cellState = document.createElement('td');
+      cellType.innerText = type;
+      cellState.innerText = typeFilterStates[type] ? 'ON' : 'OFF';
+      row.appendChild(cellType);
+      row.appendChild(cellState);
+      table.appendChild(row);
+    });
+    filterTableDiv.appendChild(table);
+  }
+
+  function handleFilterChange() {
+    // 1) Načti aktuální stav všech tlačítek filtru
+    // 2) Aktualizuj zdrojový soubor GeoJSON
+    // 3) Počkej až budou všechna data aktuální
+    // 4) Vykresli špendlíky na mapě
+    updateMap();
+  }
+
+  function updateMap() {
+    const geojsonData = createGeoJSON(sheetData);
+    map.getSource('capitals').setData(geojsonData);
+    map.once('idle', () => {
+      updateMarkers();
+    });
+    updateFilterTable();
   }
 
   document.getElementById('magicButton').addEventListener('click', function() {
@@ -234,10 +478,23 @@
   });
 
   document.getElementById('findButton').addEventListener('click', findCity);
+  document.getElementById('zoomInButton').addEventListener('click', zoomIn);
+  document.getElementById('zoomOutButton').addEventListener('click', zoomOut);
+  document.getElementById('zoomFitButton').addEventListener('click', zoomFit);
+  document.getElementById('cityName').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      findCity();
+    }
+  });
 
   map.on('load', async function () {
     const rows = await fetchGoogleSheetsData();
     sheetData = processSheetData(rows);
+
+    sheetData.forEach(item => {
+      item.tags.forEach(tag => filterStates[tag] = true); // Aktivace všech filtrů na začátku
+      typeFilterStates[item.type] = true; // Aktivace všech typů na začátku
+    });
 
     const geojsonData = createGeoJSON(sheetData);
 
@@ -289,9 +546,11 @@
     });
 
     updateMarkers();
+    updateFilterButtons();
+    updateTypeFilterButtons();
 
-    map.on('moveend', updateMarkers);
-    map.on('zoomend', updateMarkers);
+    map.on('moveend', updateMap);
+    map.on('zoomend', updateMap);
 
     map.on('click', 'clusters', function (e) {
       var features = map.queryRenderedFeatures(e.point, {
@@ -303,12 +562,7 @@
         function (err, zoom) {
           if (err) return;
 
-          map.easeTo({
-            center: features[0].geometry.coordinates,
-            zoom: zoom
-          });
-
-          setTimeout(updateMarkers, 1000); // Zpoždění pro zajištění, že se piny aktualizují po přiblížení
+          flyToLocation(features[0].geometry.coordinates, zoom);
         }
       );
     });
