@@ -2,12 +2,12 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Mapa evropských hlavních měst</title>
+  <title>Mapa oblíbených míst Itálie</title>
   <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
   <script src="https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.js"></script>
   <link href="https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.css" rel="stylesheet" />
   <style>
-    body { margin:0; padding:0; }
+    body { margin:0; padding:0; background-color: #121212; color: #E0E0E0; }
     #map { position:absolute; top:0; bottom:0; width:100%; }
     .marker {
       width: 50px;
@@ -17,25 +17,26 @@
       background-size: cover;
       background-position: center;
     }
+    #controls, #filters, #typeFilters, #zoomControls, #magicButton, #zoomLevel {
+      background: rgba(51, 51, 51, 0.2);
+      color: #E0E0E0;
+      border: none;
+    }
     #controls {
       position: absolute;
       top: 10px;
       left: 10px;
-      background: #fff;
       padding: 10px;
-      border: none;
       z-index: 1;
       display: flex;
       gap: 10px;
     }
     #filters {
       position: absolute;
-      bottom: 10px;
+      top: 10px;
       left: 50%;
       transform: translateX(-50%);
-      background: #fff;
       padding: 10px;
-      border: none;
       z-index: 1;
       display: flex;
       gap: 10px;
@@ -44,12 +45,10 @@
     }
     #typeFilters {
       position: absolute;
-      top: 10px;
+      bottom: 10px;
       left: 50%;
       transform: translateX(-50%);
-      background: #fff;
       padding: 10px;
-      border: none;
       z-index: 1;
       display: flex;
       gap: 10px;
@@ -60,39 +59,47 @@
       position: absolute;
       top: 10px;
       right: 10px;
-      background: #fff;
       padding: 10px;
-      border: none;
       z-index: 1;
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
       justify-content: center;
     }
-    #filterTable {
+    #magicButton {
       position: absolute;
-      bottom: 10px;
+      bottom: 40px;
       left: 10px;
-      background: #fff;
       padding: 10px;
-      border: 1px solid #ccc;
       z-index: 1;
+    }
+    #zoomLevel {
+      position: absolute;
+      bottom: 30px;
+      right: 10px;
+      padding: 5px;
+      z-index: 1;
+    }
+    #filterTable {
+      display: none;
     }
     #cityName {
       padding: 5px;
       font-size: 14px;
+      background: rgba(51, 51, 51, 0.8);
+      color: #E0E0E0;
+      border: 1px solid #444444;
     }
-    #magicButton, #findButton {
-      padding: 5px 10px;
-      font-size: 14px;
-      cursor: pointer;
+    #findButton {
+      display: none;
     }
     .filter-button, .zoom-button {
       padding: 5px 10px;
       font-size: 14px;
       cursor: pointer;
       border: none;
-      background: none;
+      background: rgba(68, 68, 68, 0.8);
+      color: #E0E0E0;
       font-weight: normal;
     }
     .filter-button.active, .zoom-button.active {
@@ -108,7 +115,6 @@
 <div id="controls">
   <input type="text" id="cityName" placeholder="Zadejte město">
   <button id="findButton">Najít</button>
-  <button id="magicButton">Magic</button>
 </div>
 <div id="filters"></div>
 <div id="typeFilters"></div>
@@ -117,27 +123,30 @@
   <button id="zoomOutButton" class="zoom-button">-</button>
   <button id="zoomFitButton" class="zoom-button">FIT</button>
 </div>
+<button id="magicButton">🧙🏼</button>
+<div id="zoomLevel"></div>
 <div id="filterTable"></div>
 <script>
-  mapboxgl.accessToken = 'pk.eyJ1IjoiZGphbmRlcmEiLCJhIjoiY2ptZzJ4NXhqMnJ4ZjNrbnRiMm1haHhrcSJ9.8U9iRQu8sGnE7AQ1C7VI4Q'; // Nahraďte vaším Mapbox Access Tokenem
+  mapboxgl.accessToken = 'pk.eyJ1IjoiZGphbmRlcmEiLCJhIjoiY2ptZzJ4NXhqMnJ4ZjNrbnRiMm1haHhrcSJ9.8U9iRQu8sGnE7AQ1C7VI4Q';
 
   var map = new mapboxgl.Map({
     container: 'map',
     style: 'mapbox://styles/mapbox/streets-v11',
-    center: [12.7376057, 42.8747214], // střed Trevi
+    center: [12.7376057, 42.8747214],
     zoom: 5
   });
 
   var markers = {};
+  var markerLabels = {};
   var sheetData = [];
-  var filterStates = {}; // Pomocná tabulka pro stavy filtrů
-  var typeFilterStates = {}; // Pomocná tabulka pro stavy filtrů typu
+  var filterStates = {};
+  var typeFilterStates = {};
   var clusteringEnabled = true;
 
   async function fetchGoogleSheetsData() {
-    const apiKey = 'AIzaSyCpgbO0B6V0eEiVfyt6xewv0cHjyYsj1-o'; // Nahraďte vaším Google Sheets API klíčem
-    const spreadsheetId = '1YtHqKg22xPXglCKOYOzCYTK4Om1_WhjaogZTCHnfzf8'; // Nahraďte ID vaší tabulky Google Sheets
-    const range = 'mapa!A:G'; // Přizpůsobte název listu a rozsah podle potřeby
+    const apiKey = 'AIzaSyCpgbO0B6V0eEiVfyt6xewv0cHjyYsj1-o';
+    const spreadsheetId = '1YtHqKg22xPXglCKOYOzCYTK4Om1_WhjaogZTCHnfzf8';
+    const range = 'mapa!A:G';
 
     const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?key=${apiKey}`);
     const data = await response.json();
@@ -194,7 +203,7 @@
   }
 
   async function translateText(text, targetLang) {
-    const apiKey = 'AIzaSyCpgbO0B6V0eEiVfyt6xewv0cHjyYsj1-o'; // Nahraďte vaším Google Translate API klíčem
+    const apiKey = 'YOUR_GOOGLE_TRANSLATE_API_KEY';
     const url = `https://translation.googleapis.com/language/translate/v2?key=${apiKey}`;
     const response = await fetch(url, {
       method: 'POST',
@@ -214,7 +223,6 @@
     var newMarkers = {};
     var features = map.querySourceFeatures('capitals');
 
-    // Odstranění starých markerů
     Object.keys(markers).forEach(function(id) {
       if (!newMarkers[id]) {
         markers[id].remove();
@@ -222,7 +230,6 @@
       }
     });
 
-    // Přidání nových markerů
     features.forEach(function(feature) {
       var coords = feature.geometry.coordinates;
       var props = feature.properties;
@@ -328,7 +335,7 @@
       });
     }
 
-    setTimeout(updateMarkers, 100); // Okamžitá aktualizace markerů po přepnutí clusterování s malým zpožděním
+    setTimeout(updateMarkers, 100);
   }
 
   function flyToLocation(coords, zoomLevel) {
@@ -347,19 +354,16 @@
     const cityName = document.getElementById('cityName').value.toLowerCase();
     const feature = sheetData.find(item => item.city.toLowerCase().includes(cityName));
     if (feature) {
-      // Nastav stav všech filtrů na ON
       Object.keys(filterStates).forEach(tag => filterStates[tag] = true);
       Object.keys(typeFilterStates).forEach(type => typeFilterStates[type] = true);
       updateFilterButtons();
       updateTypeFilterButtons();
 
-      // Plynule odzoomovat, přemístit a zazoomovat na nové místo
       flyToLocation([12.7376057, 42.8747214], 5);
       map.once('moveend', () => {
         flyToLocation(feature.coordinates, 12);
       });
 
-      // Aktualizuj mapu po přiblížení a vymaž vyhledávací pole
       map.once('moveend', () => {
         handleFilterChange();
         document.getElementById('cityName').value = '';
@@ -402,11 +406,10 @@
       button.addEventListener('click', () => {
         filterStates[tag] = !filterStates[tag];
         button.classList.toggle('active');
-        handleFilterChange(); // Aktualizace mapy ihned po změně filtru
+        handleFilterChange();
       });
       filtersDiv.appendChild(button);
     });
-    updateFilterTable();
   }
 
   function updateTypeFilterButtons() {
@@ -422,45 +425,13 @@
       button.addEventListener('click', () => {
         typeFilterStates[type] = !typeFilterStates[type];
         button.classList.toggle('active');
-        handleFilterChange(); // Aktualizace mapy ihned po změně filtru
+        handleFilterChange();
       });
       typeFiltersDiv.appendChild(button);
     });
-    updateFilterTable();
-  }
-
-  function updateFilterTable() {
-    const filterTableDiv = document.getElementById('filterTable');
-    filterTableDiv.innerHTML = '<h3>Filter States</h3>';
-    const table = document.createElement('table');
-    Object.keys(filterStates).forEach(tag => {
-      const row = document.createElement('tr');
-      const cellTag = document.createElement('td');
-      const cellState = document.createElement('td');
-      cellTag.innerText = tag;
-      cellState.innerText = filterStates[tag] ? 'ON' : 'OFF';
-      row.appendChild(cellTag);
-      row.appendChild(cellState);
-      table.appendChild(row);
-    });
-    Object.keys(typeFilterStates).forEach(type => {
-      const row = document.createElement('tr');
-      const cellType = document.createElement('td');
-      const cellState = document.createElement('td');
-      cellType.innerText = type;
-      cellState.innerText = typeFilterStates[type] ? 'ON' : 'OFF';
-      row.appendChild(cellType);
-      row.appendChild(cellState);
-      table.appendChild(row);
-    });
-    filterTableDiv.appendChild(table);
   }
 
   function handleFilterChange() {
-    // 1) Načti aktuální stav všech tlačítek filtru
-    // 2) Aktualizuj zdrojový soubor GeoJSON
-    // 3) Počkej až budou všechna data aktuální
-    // 4) Vykresli špendlíky na mapě
     updateMap();
   }
 
@@ -470,7 +441,11 @@
     map.once('idle', () => {
       updateMarkers();
     });
-    updateFilterTable();
+  }
+
+  function updateZoomLevel() {
+    const zoomLevelDiv = document.getElementById('zoomLevel');
+    zoomLevelDiv.innerHTML = `Zoom Level: ${map.getZoom().toFixed(2)}`;
   }
 
   document.getElementById('magicButton').addEventListener('click', function() {
@@ -492,8 +467,8 @@
     sheetData = processSheetData(rows);
 
     sheetData.forEach(item => {
-      item.tags.forEach(tag => filterStates[tag] = true); // Aktivace všech filtrů na začátku
-      typeFilterStates[item.type] = true; // Aktivace všech typů na začátku
+      item.tags.forEach(tag => filterStates[tag] = true);
+      typeFilterStates[item.type] = true;
     });
 
     const geojsonData = createGeoJSON(sheetData);
@@ -548,9 +523,13 @@
     updateMarkers();
     updateFilterButtons();
     updateTypeFilterButtons();
+    updateZoomLevel();
 
     map.on('moveend', updateMap);
-    map.on('zoomend', updateMap);
+    map.on('zoomend', () => {
+      updateMap();
+      updateZoomLevel();
+    });
 
     map.on('click', 'clusters', function (e) {
       var features = map.queryRenderedFeatures(e.point, {
