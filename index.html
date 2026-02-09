@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holiday World Map</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Leaflet MarkerCluster -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+
+    <!-- Babel Standalone -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Global Reset & Variables */
+        :root {
+            --bg-color: #0f172a;
+            --text-color: #f8fafc;
+            --accent-color: #38bdf8;
+            --accent-hover: #0ea5e9;
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --danger: #ef4444;
+            --success: #22c55e;
+            --font-main: 'Outfit', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: #262626;
+            /* Match CartoDB Dark Matter bg */
+            color: var(--text-color);
+            overflow: hidden;
+            /* Prevent scrolling */
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Map Containers */
+        #root {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .map-container {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Custom UI Elements (Glassmorphism) */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        /* Sidebar / Overlays */
+        .sidebar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 350px;
+            max-height: calc(100vh - 40px);
+            z-index: 1000;
+            /* Above map */
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow-y: auto;
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar-header {
+            margin-bottom: 20px;
+        }
+
+        .sidebar-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Add Place Button */
+        .fab-add {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 10px 15px -3px rgba(56, 189, 248, 0.4);
+            z-index: 1000;
+            transition: transform 0.2s, background-color 0.2s;
+        }
+
+        .fab-add:hover {
+            background: var(--accent-hover);
+            transform: scale(1.05);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            width: 90%;
+            max-width: 500px;
+            padding: 24px;
+            position: relative;
+        }
+
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.875rem;
+            margin-bottom: 8px;
+            color: #94a3b8;
+        }
+
+        .form-input,
+        .form-textarea,
+        .form-select {
+            width: 100%;
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+
+        .form-file-input {
+            color: #fff;
+        }
+
+        .form-input:focus,
+        .form-textarea:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-close {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: transparent;
+            border: none;
+            font-size: 1.2rem;
+            color: #94a3b8;
+            cursor: pointer;
+        }
+
+        .btn-close:hover {
+            color: white;
+        }
+
+        /* Custom Marker */
+        .custom-pin {
+            background: transparent;
+            border: none;
+        }
+
+        .pin-outer {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 3px solid #fff;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            position: relative;
+            transition: transform 0.2s;
+            background: #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pin-outer:hover {
+            transform: scale(1.15) translateY(-5px);
+            border-color: var(--accent-color);
+            z-index: 1000 !important;
+        }
+
+        .form-file-input {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 8px;
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .search-result-item:hover {
+            background: rgba(56, 189, 248, 0.2) !important;
+            color: #38bdf8;
+        }
+
+        /* Marker Cluster Customization */
+        .marker-cluster-small,
+        .marker-cluster-medium,
+        .marker-cluster-large {
+            background-color: rgba(56, 189, 248, 0.6);
+            /* --accent-color transparent */
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            color: white;
+            font-family: var(--font-main);
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+        }
+
+        .marker-cluster div {
+            width: 30px;
+            height: 30px;
+            background-color: rgba(14, 165, 233, 0.8);
+            /* --accent-hover */
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        /* Popup Customization - Heavy Overrides for Leaflet */
+        .leaflet-popup-content-wrapper {
+            background: rgba(30, 41, 59, 0.85) !important;
+            backdrop-filter: blur(12px) !important;
+            color: var(--text-color) !important;
+            border-radius: 12px !important;
+            padding: 0 !important;
+            overflow: hidden;
+            border: 1px solid var(--glass-border);
+        }
+
+        .leaflet-popup-tip {
+            background: rgba(30, 41, 59, 0.85) !important;
+        }
+
+        .leaflet-popup-content {
+            margin: 0 !important;
+            width: 240px !important;
+        }
+
+        .leaflet-container a.leaflet-popup-close-button {
+            color: white !important;
+            font-size: 18px !important;
+            padding: 4px !important;
+            z-index: 10;
+        }
+
+        .popup-image-container {
+            width: 100%;
+            height: 140px;
+            overflow: hidden;
+        }
+
+        .popup-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .popup-meta {
+            padding: 12px;
+        }
+
+        .popup-title {
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 4px;
+        }
+
+        .popup-desc {
+            font-size: 0.9rem;
+            color: #cbd5e1;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .popup-date {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            display: block;
+        }
+
+        .popup-category {
+            display: inline-block;
+            background: var(--accent-color);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Utility */
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-presets="react">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Components ---
+
+        // 1. Icon Component
+        const Icon = ({ name, size = 24, color = "currentColor", ...props }) => {
+            const ref = useRef(null);
+            useEffect(() => {
+                if (window.lucide && ref.current) {
+                    window.lucide.createIcons({
+                        root: ref.current,
+                        attrs: {
+                            width: size,
+                            height: size,
+                            stroke: color,
+                            ...props
+                        }
+                    });
+                }
+            }, [name, size, color]);
+
+            return (
+                <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <i data-lucide={name}></i>
+                </span>
+            );
+        };
+
+
+        // 2. Map Component (Leaflet Wrapper)
+        const MapView = ({ places, onMapClick, focusedPlaceId }) => {
+            const mapRef = useRef(null);
+            const mapInstanceRef = useRef(null);
+            const markersRef = useRef(null);
+
+            // Initialize Map
+            useEffect(() => {
+                if (!mapRef.current) return;
+                if (mapInstanceRef.current) return; // Already initialized
+
+                // Map Config: Zoom Control Top-Right
+                const map = L.map(mapRef.current, {
+                    zoomControl: false,
+                    minZoom: 3, // Reverted to 3 to prevent white stripes
+                    maxZoom: 10,
+                    maxBounds: [[-90, -180], [90, 180]],
+                    maxBoundsViscosity: 1.0,
+                    wheelDebounceTime: 150 // Debounce zoom for performance
+                }).setView([20, 0], 3);
+
+                // Add Zoom Control to Top-Right
+                L.control.zoom({ position: 'topright' }).addTo(map);
+
+                // Dark/Premium Tile Layer (CartoDB Dark Matter)
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                    subdomains: 'abcd',
+                    maxZoom: 20,
+                    updateWhenZooming: false, // Performance: Don't load tiles during animation
+                    updateWhenIdle: true,     // Performance: Load only when map stops moving
+                    keepBuffer: 2             // Performance: Keep detailed buffer to avoid cutting out
+                }).addTo(map);
+
+
+                map.on('click', (e) => {
+                    onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng });
+                });
+
+                mapInstanceRef.current = map;
+
+                return () => {
+                    map.remove();
+                    mapInstanceRef.current = null;
+                };
+            }, []);
+
+            // Update Markers with Clustering
+            useEffect(() => {
+                if (!mapInstanceRef.current) return;
+                const map = mapInstanceRef.current;
+
+                // Initialize cluster group if needed
+                if (!markersRef.current) {
+                    markersRef.current = L.markerClusterGroup({
+                        showCoverageOnHover: false,
+                        maxClusterRadius: 50,
+                        spiderfyOnMaxZoom: true,
+                        animate: true
+                    });
+                    map.addLayer(markersRef.current);
+                }
+
+                const clusterGroup = markersRef.current;
+                clusterGroup.clearLayers();
+
+                places.forEach(place => {
+                    const icon = L.divIcon({
+                        className: 'custom-pin',
+                        html: `<div class="pin-outer"><img src="${place.image}" class="pin-image" onerror="this.src='https://placehold.co/100x100?text=No+Img'" /></div>`,
+                        iconSize: [50, 50],
+                        iconAnchor: [25, 50],
+                        popupAnchor: [0, -50]
+                    });
+
+                    const marker = L.marker([place.lat, place.lng], { icon });
+                    marker.placeId = place.id; // Attach ID for lookup
+
+                    const popupContent = `
+                    <div class="popup-image-container">
+                        <img src="${place.image}" class="popup-image" onerror="this.src='https://placehold.co/400x300?text=No+Image'" />
+                    </div>
+                    <div class="popup-meta">
+                        <div class="popup-title">${place.title}</div>
+                        <div class="popup-desc">${place.description}</div>
+                        <span class="popup-date">${place.date}</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                            <span class="popup-category">${place.category}</span>
+                            <div style="display: flex; gap: 8px;">
+                                <button onclick="event.stopPropagation(); window.HolidayMap.edit(${place.id})" style="background: none; border: none; cursor: pointer; color: #38bdf8;" title="Edit">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                </button>
+                                <button onclick="event.stopPropagation(); window.HolidayMap.delete(${place.id})" style="background: none; border: none; cursor: pointer; color: #ef4444;" title="Delete">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                    marker.bindPopup(popupContent);
+                    clusterGroup.addLayer(marker);
+                });
+
+            }, [places]);
+
+            // Handle focusedPlaceId changes
+            useEffect(() => {
+                if (!mapInstanceRef.current || !markersRef.current) return;
+                const map = mapInstanceRef.current;
+                const clusterGroup = markersRef.current;
+
+                if (focusedPlaceId) {
+                    // Find marker by finding layer with placeId property
+                    let targetMarker = null;
+                    clusterGroup.eachLayer(layer => {
+                        if (layer.placeId === focusedPlaceId) {
+                            targetMarker = layer;
+                        }
+                    });
+
+                    if (targetMarker) {
+                        const visibleParent = clusterGroup.getVisibleParent(targetMarker);
+
+                        if (visibleParent === targetMarker) {
+                            // Marker is visible (not clustered) - Fly directly to it
+                            map.flyTo(targetMarker.getLatLng(), 10, { // Max zoom 10
+                                duration: 2.0,
+                                easeLinearity: 0.25
+                            });
+                            map.once('moveend', () => {
+                                targetMarker.openPopup();
+                            });
+                        } else {
+                            // Marker is clustered - Use zoomToShowLayer to uncluster
+                            clusterGroup.zoomToShowLayer(targetMarker, () => {
+                                targetMarker.openPopup();
+                            });
+                        }
+                    }
+                } else {
+                    map.closePopup();
+                    map.flyTo([20, 0], 3, {
+                        duration: 2.0,
+                        easeLinearity: 0.25
+                    });
+                }
+            }, [focusedPlaceId]);
+
+            return <div ref={mapRef} className="map-container"></div>;
+        };
+
+
+        // 3. Import Confirmation Modal
+        const ImportConfirmModal = ({ isOpen, onClose, onConfirm, count }) => {
+            useEffect(() => {
+                if (isOpen) console.log('DEBUG: ImportConfirmModal OPENED with count:', count);
+            }, [isOpen]);
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="modal-overlay active" style={{ zIndex: 9999 }}>
+                    <div className="modal-content glass-panel" style={{ textAlign: 'center', padding: '30px', border: '2px solid #38bdf8' }}>
+                        <button className="btn-close" onClick={() => { console.log('DEBUG: Modal X clicked'); onClose(); }}><Icon name="x" /></button>
+
+                        <div style={{ marginBottom: '20px' }}>
+                            <div style={{
+                                background: 'rgba(56, 189, 248, 0.1)',
+                                width: '60px',
+                                height: '60px',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                margin: '0 auto 15px',
+                                color: '#38bdf8'
+                            }}>
+                                <Icon name="file-text" size={32} />
+                            </div>
+                            <h2 style={{ fontSize: '1.5rem', marginBottom: '10px' }}>Importovat vzpomínky?</h2>
+                            <p style={{ color: '#94a3b8', lineHeight: '1.5' }}>
+                                Nalezeno <strong>{count}</strong> míst v souboru. <br />
+                                Chcete je přidat k vašim aktuálním vzpomínkám?
+                            </p>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            <button
+                                className="glass-panel"
+                                style={{ flex: 1, padding: '12px', cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,0.05)' }}
+                                onClick={onClose}
+                            >
+                                Zrušit
+                            </button>
+                            <button
+                                className="btn-primary"
+                                style={{ flex: 1, margin: 0 }}
+                                onClick={onConfirm}
+                            >
+                                Přidat vše
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+
+        // 4. Add Place Modal (Modified for Edit)
+        const AddPlaceModal = ({ isOpen, onClose, onSubmit, clickedLocation, initialData }) => {
+            const [searchQuery, setSearchQuery] = useState('');
+            const [results, setResults] = useState([]);
+            const [isSearching, setIsSearching] = useState(false);
+            const [photoSuggestions, setPhotoSuggestions] = useState([]);
+            const [isPhotosLoading, setIsPhotosLoading] = useState(false);
+            const [formData, setFormData] = useState({
+                title: '',
+                category: 'Sightseeing',
+                date: new Date().toISOString().split('T')[0],
+                description: '',
+                image: '',
+                lat: '',
+                lng: ''
+            });
+
+            useEffect(() => {
+                if (isOpen) {
+                    if (initialData) {
+                        setFormData(initialData);
+                        setSearchQuery(initialData.title);
+                    } else if (clickedLocation) {
+                        setFormData(prev => ({
+                            ...prev,
+                            lat: clickedLocation.lat,
+                            lng: clickedLocation.lng,
+                            title: '',
+                            description: '',
+                            image: '',
+                            date: new Date().toISOString().split('T')[0]
+                        }));
+                        setSearchQuery('');
+                    } else {
+                        setFormData({
+                            title: '',
+                            category: 'Sightseeing',
+                            date: new Date().toISOString().split('T')[0],
+                            description: '',
+                            image: '',
+                            lat: '',
+                            lng: ''
+                        });
+                        setSearchQuery('');
+                    }
+                    setResults([]);
+                    setPhotoSuggestions([]);
+                }
+            }, [isOpen, initialData, clickedLocation]);
+
+            if (!isOpen) return null;
+
+            const isEdit = !!initialData;
+
+            const handleSearch = async () => {
+                if (!searchQuery.trim()) return;
+                setIsSearching(true);
+                setPhotoSuggestions([]);
+                try {
+                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&addressdetails=1`);
+                    const data = await response.json();
+                    setResults(data);
+                } catch (err) {
+                    console.error('Search error:', err);
+                } finally {
+                    setIsSearching(false);
+                }
+            };
+
+            const fetchPhotos = async (query) => {
+                setIsPhotosLoading(true);
+                try {
+                    // Search Wikipedia for pages with images related to the query
+                    const url = `https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&piprop=thumbnail&pithumbsize=600&pilimit=10&generator=search&gsrsearch=${encodeURIComponent(query)}&origin=*`;
+                    const response = await fetch(url);
+                    const data = await response.json();
+
+                    if (data.query && data.query.pages) {
+                        const imgs = Object.values(data.query.pages)
+                            .filter(p => p.thumbnail)
+                            .map(p => p.thumbnail.source)
+                            .slice(0, 10);
+                        setPhotoSuggestions(imgs);
+                    }
+                } catch (err) {
+                    console.error('Photo fetch error:', err);
+                } finally {
+                    setIsPhotosLoading(false);
+                }
+            };
+
+            const selectResult = (res) => {
+                const title = res.display_name.split(',')[0];
+                setFormData(prev => ({
+                    ...prev,
+                    title: title,
+                    lat: res.lat,
+                    lng: res.lon,
+                    description: res.display_name
+                }));
+                setSearchQuery(title);
+                setResults([]);
+                fetchPhotos(title);
+            };
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                const fData = new FormData(e.target);
+
+                const processSubmission = (imageUrl) => {
+                    const newPlace = {
+                        id: isEdit ? initialData.id : Date.now(),
+                        title: fData.get('title'),
+                        description: fData.get('description'),
+                        date: fData.get('date'),
+                        category: fData.get('category'),
+                        image: imageUrl || fData.get('image') || (isEdit ? initialData.image : 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80'),
+                        lat: parseFloat(fData.get('lat')),
+                        lng: parseFloat(fData.get('lng'))
+                    };
+                    onSubmit(newPlace);
+                };
+
+                const fileInput = e.target.querySelector('input[type="file"]');
+                if (fileInput && fileInput.files[0]) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => processSubmission(reader.result);
+                    reader.readAsDataURL(fileInput.files[0]);
+                } else {
+                    processSubmission();
+                }
+            };
+
+            return (
+                <div className={`modal-overlay ${isOpen ? 'active' : ''}`} onClick={(e) => {
+                    if (e.target.className.includes('modal-overlay')) onClose();
+                }}>
+                    <div className="modal-content glass-panel" style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(16px)', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <button className="btn-close" onClick={onClose}><Icon name="x" /></button>
+                        <h2 className="modal-title">{isEdit ? 'Upravit vzpomínku' : 'Přidat novou vzpomínku'}</h2>
+
+                        <div className="form-group">
+                            <label className="form-label">Vyhledat místo nebo město</label>
+                            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                                <input
+                                    className="form-input"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleSearch();
+                                        }
+                                    }}
+                                    placeholder="Hledat (např. Praha)..."
+                                />
+                                <button type="button" onClick={handleSearch} className="btn-primary" style={{ width: '45px', margin: 0, padding: 0 }}>
+                                    {isSearching ? <div className="spinner" style={{ width: '18px', height: '18px', border: '2px solid #fff', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: 'auto' }}></div> : <Icon name="search" size={18} />}
+                                </button>
+                            </div>
+                            {Array.isArray(results) && results.length > 0 && (
+                                <div className="glass-panel" style={{ maxHeight: '150px', overflowY: 'auto', background: 'rgba(0,0,0,0.5)', padding: '4px' }}>
+                                    {results.map((res, i) => (
+                                        <div key={i} onClick={() => selectResult(res)} className="search-result-item" style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: '6px', transition: 'background 0.2s', fontSize: '0.85rem' }}>
+                                            {res.display_name}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Photo Suggestions */}
+                        {(isPhotosLoading || photoSuggestions.length > 0) && (
+                            <div className="form-group" style={{ marginBottom: '20px' }}>
+                                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Icon name="image" size={14} /> Navržené fotografie
+                                    {isPhotosLoading && <div className="spinner" style={{ width: '12px', height: '12px', border: '1.5px solid var(--accent-color)', borderTop: '1.5px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>}
+                                </label>
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '10px',
+                                    overflowX: 'auto',
+                                    padding: '5px 0',
+                                    scrollbarWidth: 'none',
+                                    msOverflowStyle: 'none'
+                                }}>
+                                    {photoSuggestions.map((img, i) => (
+                                        <div
+                                            key={i}
+                                            onClick={() => setFormData(prev => ({ ...prev, image: img }))}
+                                            style={{
+                                                minWidth: '100px',
+                                                height: '70px',
+                                                borderRadius: '8px',
+                                                overflow: 'hidden',
+                                                cursor: 'pointer',
+                                                border: formData.image === img ? '2px solid var(--accent-color)' : '2px solid transparent',
+                                                transition: 'all 0.2s',
+                                                flexShrink: 0,
+                                                position: 'relative'
+                                            }}
+                                        >
+                                            <img src={img} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            {formData.image === img && (
+                                                <div style={{ position: 'absolute', inset: 0, background: 'rgba(56, 189, 248, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Icon name="check" color="#fff" size={20} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                                <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px' }}>
+                                    Navrženo 10 fotografií. Vyberte jednu nebo vložte vlastní URL níže.
+                                </p>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleSubmit}>
+                            <div className="form-group">
+                                <label className="form-label">Název místa</label>
+                                <input name="title" className="form-input" required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="např. Eiffelova věž" />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <div className="form-group" style={{ flex: 1 }}>
+                                    <label className="form-label">Zem. šířka (Lat)</label>
+                                    <input name="lat" className="form-input" required value={formData.lat} onChange={e => setFormData({ ...formData, lat: e.target.value })} />
+                                </div>
+                                <div className="form-group" style={{ flex: 1 }}>
+                                    <label className="form-label">Zem. délka (Lng)</label>
+                                    <input name="lng" className="form-input" required value={formData.lng} onChange={e => setFormData({ ...formData, lng: e.target.value })} />
+                                </div>
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">Kategorie</label>
+                                <select name="category" className="form-select" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>
+                                    <option value="Sightseeing">Památky</option>
+                                    <option value="Relax">Relax</option>
+                                    <option value="Adventure">Dobrodružství</option>
+                                    <option value="Food">Jídlo</option>
+                                </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">Datum návštěvy</label>
+                                <input name="date" type="date" className="form-input" required value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} />
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">Popis</label>
+                                <textarea name="description" className="form-textarea" rows="3" required value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Jaké to tam bylo?"></textarea>
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">URL Fotografie / nebo nahrát</label>
+                                <input name="image" className="form-input" value={formData.image} onChange={e => setFormData({ ...formData, image: e.target.value })} placeholder="https://..." style={{ marginBottom: '8px' }} />
+                                <div style={{ fontSize: '0.8rem', color: '#64748b', textAlign: 'center', marginBottom: '8px' }}>NEBO</div>
+                                <input type="file" accept="image/*" className="form-file-input" />
+                            </div>
+
+                            <button type="submit" className="btn-primary">
+                                {isEdit ? 'Uložit změny' : 'Přidat připínáček'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+
+        // 4. Sidebar List
+        const Sidebar = ({ places, onFlyTo, focusedPlaceId }) => {
+            return (
+                <div className="sidebar glass-panel">
+                    <div className="sidebar-header">
+                        <h1 className="sidebar-title">Mapa vzpomínek <small style={{ fontSize: '0.6rem', opacity: 0.5 }}>v2.1</small></h1>
+                        <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>{places.length} připnutých míst</p>
+
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                            <button
+                                onClick={() => window.HolidayMap.export()}
+                                className="glass-panel"
+                                style={{ padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            >
+                                <Icon name="download" size={14} /> Export
+                            </button>
+
+                            <input
+                                type="file"
+                                id="import-input"
+                                style={{ display: 'none' }}
+                                accept=".json"
+                                onChange={(e) => window.HolidayMap.import(e)}
+                            />
+                            <label
+                                htmlFor="import-input"
+                                className="glass-panel"
+                                style={{ padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            >
+                                <Icon name="upload" size={14} /> Import
+                            </label>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {places.map(place => (
+                            <div key={place.id}
+                                style={{
+                                    display: 'flex',
+                                    gap: '12px',
+                                    background: 'rgba(255,255,255,0.03)',
+                                    padding: '10px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    transition: 'background 0.2s',
+                                    border: focusedPlaceId === place.id ? '1px solid #38bdf8' : '1px solid transparent',
+                                    background: focusedPlaceId === place.id ? 'rgba(56, 189, 248, 0.1)' : 'rgba(255,255,255,0.03)'
+                                }}
+                                onClick={() => onFlyTo(place)}
+                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                            >
+                                <img src={place.image} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} onError={(e) => e.target.src = 'https://placehold.co/100x100?text=No+Img'} />
+                                <div>
+                                    <div style={{ fontWeight: '600' }}>{place.title}</div>
+                                    <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{place.date}</div>
+                                </div>
+                            </div>
+                        ))}
+
+                        {places.length === 0 && (
+                            <div style={{ textAlign: 'center', padding: '20px', color: '#64748b', fontStyle: 'italic' }}>
+                                Klikněte na mapu pro přidání první vzpomínky!
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+
+        // 5. Main App
+        const App = () => {
+            // Initial State from LocalStorage
+            const [places, setPlaces] = useState(() => {
+                const saved = localStorage.getItem('holiday_map_places');
+                return saved ? JSON.parse(saved) : [];
+            });
+
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+            const [pendingImportPlaces, setPendingImportPlaces] = useState([]);
+            const [tempLocation, setTempLocation] = useState(null);
+            const [editingPlace, setEditingPlace] = useState(null);
+            const [focusedPlaceId, setFocusedPlaceId] = useState(null);
+
+            useEffect(() => {
+                localStorage.setItem('holiday_map_places', JSON.stringify(places));
+
+                // Expose API for Leaflet Popups
+                window.HolidayMap = {
+                    edit: (id) => {
+                        const place = places.find(p => p.id === id);
+                        if (place) handleEditStart(place);
+                    },
+                    delete: (id) => {
+                        // Global delete (from popup)
+                        if (confirm('Opravdu chcete smazat tuto vzpomínku?')) {
+                            handleDelete(id);
+                        }
+                    },
+                    export: () => {
+                        handleExport();
+                    },
+                    import: (e) => {
+                        handleImport(e);
+                    }
+                };
+            }, [places]);
+
+            useEffect(() => {
+                // Initialize Lucide icons
+                if (window.lucide) window.lucide.createIcons();
+            });
+
+            const handleMapClick = (location) => {
+                setTempLocation(location);
+                setEditingPlace(null);
+                setIsModalOpen(true);
+            };
+
+            const handleSubmit = (placeData) => {
+                if (editingPlace) {
+                    setPlaces(places.map(p => p.id === placeData.id ? placeData : p));
+                } else {
+                    setPlaces([...places, placeData]);
+                }
+                setIsModalOpen(false);
+                setTempLocation(null);
+                setEditingPlace(null);
+            };
+
+            const handleEditStart = (place) => {
+                setEditingPlace(place);
+                setTempLocation(null);
+                setIsModalOpen(true);
+            };
+
+            const handleDelete = (id) => {
+                setPlaces(places.filter(p => p.id !== id));
+            };
+
+            const handleFlyTo = (place) => {
+                if (focusedPlaceId === place.id) {
+                    setFocusedPlaceId(null); // Toggle off (zoom out)
+                } else {
+                    setFocusedPlaceId(place.id); // Toggle on (zoom in)
+                }
+            };
+
+            const handleExport = () => {
+                const dataStr = JSON.stringify(places, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(dataBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'seznam_vzpominek.json';
+
+                // Chrome fix: Link must be in DOM to trigger download
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                URL.revokeObjectURL(url);
+            };
+
+            const handleImport = (e) => {
+                const file = e.target.files[0];
+                if (!file) {
+                    console.log('No file selected for import.');
+                    return;
+                }
+
+                console.log('--- Import Process Started ---');
+                console.log('File:', file.name, 'Size:', file.size, 'Type:', file.type);
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const content = event.target.result;
+                        console.log('File read successfully. Length:', content.length);
+
+                        const importedPlaces = JSON.parse(content);
+                        console.log('JSON parsed. Found', Array.isArray(importedPlaces) ? importedPlaces.length : 'non-array', 'items.');
+
+                        if (!Array.isArray(importedPlaces)) {
+                            throw new Error('Soubor musí obsahovat seznam (pole) míst.');
+                        }
+
+                        if (Array.isArray(importedPlaces) && importedPlaces.length > 0) {
+                            setPendingImportPlaces(importedPlaces);
+                            setIsImportModalOpen(true);
+                        } else {
+                            throw new Error('Soubor neobsahuje platná místa k importu.');
+                        }
+                    } catch (err) {
+                        console.error('CRITICAL IMPORT ERROR:', err);
+                        alert('Chyba při importu: ' + err.message);
+                    }
+                };
+                reader.onerror = (err) => {
+                    console.error('FileReader error:', err);
+                    alert('Chyba při čtení souboru.');
+                };
+                reader.readAsText(file);
+
+                // Reset input
+                e.target.value = '';
+            };
+
+            const handleConfirmImport = () => {
+                console.log('Finalizing import for', pendingImportPlaces.length, 'places.');
+                const now = Date.now();
+                const sanitizedPlaces = pendingImportPlaces.map((p, idx) => ({
+                    id: now + idx,
+                    title: p.title || 'Bezejmenné místo',
+                    description: p.description || '',
+                    date: p.date || new Date().toISOString().split('T')[0],
+                    category: p.category || 'Sightseeing',
+                    image: p.image || 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80',
+                    lat: parseFloat(p.lat),
+                    lng: parseFloat(p.lng)
+                })).filter(p => {
+                    const valid = !isNaN(p.lat) && !isNaN(p.lng);
+                    if (!valid) console.warn('Skipping invalid place:', p.title);
+                    return valid;
+                });
+
+                setPlaces(prev => [...prev, ...sanitizedPlaces]);
+                setIsImportModalOpen(false);
+                setPendingImportPlaces([]);
+
+                setTimeout(() => {
+                    alert(`Import dokončen! Přidáno ${sanitizedPlaces.length} míst.`);
+                }, 100);
+            };
+
+            const handleCancelImport = () => {
+                console.log('DEBUG: handleCancelImport CALLED');
+                setIsImportModalOpen(false);
+                setPendingImportPlaces([]);
+            };
+
+            return (
+                <>
+                    <Sidebar places={places} onFlyTo={handleFlyTo} focusedPlaceId={focusedPlaceId} />
+
+                    <MapView places={places} onMapClick={handleMapClick} focusedPlaceId={focusedPlaceId} />
+
+                    <AddPlaceModal
+                        isOpen={isModalOpen}
+                        onClose={() => setIsModalOpen(false)}
+                        onSubmit={handleSubmit}
+                        clickedLocation={tempLocation}
+                        initialData={editingPlace}
+                    />
+
+                    <ImportConfirmModal
+                        isOpen={isImportModalOpen}
+                        onClose={handleCancelImport}
+                        onConfirm={handleConfirmImport}
+                        count={pendingImportPlaces.length}
+                    />
+                </>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
